@@ -16,7 +16,13 @@ def setupArgs():
     parser.add_argument("action", choices = ["log", "create", "delete"], help = "choose action")
     return parser.parse_args()
 
-args = setupArgs()
-LOG_LOCATION = args.snap_location + "/snaps.log"
+def showLog(log_file):
+    if os.path.isfile(log_file):
+        with open(log_file, 'r') as log:
+            print(log.read())
 
-#if __name__ == "__main__":
+if __name__ == "__main__":
+    args = setupArgs()
+
+    if args.action == "log":
+        showLog(args.snap_location + "/snaps.log")
