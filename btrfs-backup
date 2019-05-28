@@ -12,17 +12,21 @@ def setupArgs():
             raise argparse.ArgumentTypeError(f"{path} is not a valid directory")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-s", "--snap-location", type = dir_path, default = "/snaps", help = "where snaps are located")
+    parser.add_argument("--snap-location", type = dir_path, default = "/snaps", help = "where snaps are located")
     parser.add_argument("action", choices = ["log", "create", "delete"], help = "choose action")
+    parser.add_argument("-s", "--short", action = "store_true", help = "shorten the log")
     return parser.parse_args()
 
-def showLog(log_file):
+def showLog(log_file, shorten):
     if os.path.isfile(log_file):
         with open(log_file, 'r') as log:
-            print(log.read())
+            if not shorten:
+                print(log.read())
+            else:
+                print('\n'.join([item[1] for item in [item.split(' ') for item in log.read().split('\n')] if item[0] != '']))
 
 if __name__ == "__main__":
     args = setupArgs()
 
     if args.action == "log":
-        showLog(args.snap_location + "/snaps.log")
+        showLog(args.snap_location + "/snaps.log", args.short)
