@@ -1,3 +1,22 @@
 #!/usr/bin/python3
+import argparse
+import sys
+import os
 
-print("Hello World!")
+def setupArgs():
+    
+    def dir_path(path):
+        if os.path.isdir(path):
+            return path
+        else:
+            raise argparse.ArgumentTypeError(f"{path} is not a valid directory")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--snap-location", type = dir_path, default = "/snaps", help = "where snaps are located")
+    parser.add_argument("action", choices = ["log", "create", "delete"], help = "choose action")
+    return parser.parse_args()
+
+args = setupArgs()
+LOG_LOCATION = args.snap_location + "/snaps.log"
+
+#if __name__ == "__main__":
