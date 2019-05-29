@@ -4,6 +4,7 @@ import sys
 import os
 import subprocess
 import datetime
+import time
 import logging
 from systemd import journal
 
@@ -15,23 +16,34 @@ class Error:
 
 def setupArgs():
     
-    def dir_path(path):
+    def dirPath(path):
         if os.path.isdir(path):
             return path
         else:
             raise argparse.ArgumentTypeError(f"{path} is not a valid directory")
 
+    def correctDate(date):
+        try:
+            time.strptime(date, "%y-%m-%d_%H-%M-%S")
+            return date
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{date} doesn't follow %y-%m-%d_%H-%M-%S format, i.e. \"19-05-27_13-20-37\"")
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--snap-location", type = dir_path, default = "/snaps", help = "where snaps are located")
-    subParser = parser.add_subparsers()
+    parser.add_argument("--snap-location", type = dirPath, default = "/snaps", help = "where snaps are located")
+    subParser = parser.add_subparsers(dest = "action")
     logParser = subParser.add_parser("log")
-    logParser.set_defaults(action = "log")
     logParser.add_argument("-s", "--short", action = "store_true", help = "shorten the log")
     createParser = subParser.add_parser("create")
-    createParser.set_defaults(action = "create")
     createParser.add_argument("subvol", choices = ["root", "home-gray", "both"], help = "the subvolume to backup")
     createParser.add_argument("reason", nargs='*', default = "")
-    return parser.parse_args()
+    deleteParser = subParser.add_parser("delete")
+    deleteParser.add_argument("backupDate", type = correctDate, nargs = '*')
+    args = parser.parse_args()
+    if args.action is None:
+        parser.print_help()
+        sys.exit(0)
+    return args
 
 def showLog(logFile, shorten):
     if os.path.isfile(logFile):
@@ -46,7 +58,7 @@ def checkRoot(command):
         Error.noRoot(command)
 
 def createBackup(subvolName, snapLocation, logFile, logReason = ""):
-    #checkRoot("create")
+    checkRoot("create")
     if subvolName == "both":
         createBackup("root", snapLocation, logFile, logReason)
         createBackup("home-gray", snapLocation, logFile, logReason)
@@ -76,6 +88,23 @@ def createBackup(subvolName, snapLocation, logFile, logReason = ""):
     else:
         log.info(f"Snapshot of {subvolName} volume successfully created ({logReason})")
 
+def deleteBackups(backups, snapLocation, logFile):
+    #checkRoot("delete")
+    for backup in backups:
+        possibleBackupLocations = [snapLocation + f"/root/{backup}", snapLocation + f"/home-gray/{backup}"]
+        for location in possibleBackupLocations:
+            if os.path.isdir(location):
+                subprocess.call(["btrfs", "subvolume", "delete", location])
+
+        with open(logFile, 'r') as log:
+            lines = log.readlines()
+
+        lines = [line for line in lines if not backup in line]
+
+        with open(logFile, 'w') as log:
+            for line in lines:
+                log.write(f"{line}")
+
 if __name__ == "__main__":
     args = setupArgs()
     logFile = args.snap_location + "/snaps.log"
@@ -84,3 +113,5 @@ if __name__ == "__main__":
         showLog(logFile, args.short)
     elif args.action == "create":
         createBackup(args.subvol, args.snap_location, logFile, ' '.join(args.reason))
+    elif args.action == "delete":
+        deleteBackups(args.backupDate, args.snap_location, logFile)
