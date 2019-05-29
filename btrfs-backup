@@ -94,10 +94,16 @@ def createBackup(subvolName, snapLocation, logFile, logReason=""):
 def deleteBackups(backups, snapLocation, logFile):
     checkRoot("delete")
     for backup in backups:
-        possibleBackupLocations = [snapLocation + f"/root/{backup}", snapLocation + f"/home-gray/{backup}"]
+        backupExists = False
+        possibleBackupLocations = [f"{snapLocation}/{subvol}/{backup}" for subvol in ("root", "home-gray")]
         for location in possibleBackupLocations:
             if os.path.isdir(location):
+                backupExists = True
                 subprocess.call(["btrfs", "subvolume", "delete", location])
+
+        if not backupExists:
+            print(f"Backup {backup} doesn't exist")
+            return
 
         with open(logFile, 'r') as log:
             lines = log.readlines()
@@ -106,7 +112,7 @@ def deleteBackups(backups, snapLocation, logFile):
 
         with open(logFile, 'w') as log:
             for line in lines:
-                log.write(f"{line}")
+                log.write(line)
 
 
 if __name__ == "__main__":
