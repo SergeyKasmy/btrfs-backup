@@ -8,14 +8,8 @@ import time
 import logging
 from systemd import journal
 
-class Error:
-    @staticmethod
-    def noRoot(command):
-            sys.stderr.write(f"\"{command}\" may only be used as root")
-            sys.exit(1)
 
 def setupArgs():
-    
     def dirPath(path):
         if os.path.isdir(path):
             return path
@@ -27,23 +21,25 @@ def setupArgs():
             time.strptime(date, "%y-%m-%d_%H-%M-%S")
             return date
         except ValueError:
-            raise argparse.ArgumentTypeError(f"{date} doesn't follow %y-%m-%d_%H-%M-%S format, i.e. \"19-05-27_13-20-37\"")
+            raise argparse.ArgumentTypeError(
+                f"{date} doesn't follow %y-%m-%d_%H-%M-%S format, i.e. \"19-05-27_13-20-37\"")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--snap-location", type = dirPath, default = "/snaps", help = "where snaps are located")
-    subParser = parser.add_subparsers(dest = "action")
+    parser.add_argument("--snap-location", type=dirPath, default="/snaps", help="where snaps are located")
+    subParser = parser.add_subparsers(dest="action")
     logParser = subParser.add_parser("log")
-    logParser.add_argument("-s", "--short", action = "store_true", help = "shorten the log")
+    logParser.add_argument("-s", "--short", action="store_true", help="shorten the log")
     createParser = subParser.add_parser("create")
-    createParser.add_argument("subvol", choices = ["root", "home-gray", "both"], help = "the subvolume to backup")
-    createParser.add_argument("reason", nargs='*', default = "")
+    createParser.add_argument("subvol", choices=["root", "home-gray", "both"], help="the subvolume to backup")
+    createParser.add_argument("reason", nargs='*', default="")
     deleteParser = subParser.add_parser("delete")
-    deleteParser.add_argument("backupDate", type = correctDate, nargs = '*')
+    deleteParser.add_argument("backupDate", type=correctDate, nargs='*')
     args = parser.parse_args()
     if args.action is None:
         parser.print_help()
         sys.exit(0)
     return args
+
 
 def showLog(logFile, shorten):
     if os.path.isfile(logFile):
@@ -51,19 +47,25 @@ def showLog(logFile, shorten):
             if not shorten:
                 print(log.read())
             else:
-                print('\n'.join([item[1] for item in [item.split(' ') for item in log.read().split('\n')] if item[0] != '']))
+                print('\n'.join(
+                    [item[1] for item in [item.split(' ') for item in log.read().split('\n')] if item[0] != '']))
+
 
 def checkRoot(command):
     if os.geteuid() != 0:
-        Error.noRoot(command)
+        sys.stderr.write(f"\"{command}\" may only be used as root")
+        sys.exit(1)
 
-def createBackup(subvolName, snapLocation, logFile, logReason = ""):
+
+def createBackup(subvolName, snapLocation, logFile, logReason=""):
     checkRoot("create")
     if subvolName == "both":
         createBackup("root", snapLocation, logFile, logReason)
         createBackup("home-gray", snapLocation, logFile, logReason)
         return
-    
+
+    assert(subvolName == "root" or subvolName == "home-gray")
+
     backupDir = snapLocation
     if subvolName == "root":
         subvol = "/"
@@ -88,8 +90,9 @@ def createBackup(subvolName, snapLocation, logFile, logReason = ""):
     else:
         log.info(f"Snapshot of {subvolName} volume successfully created ({logReason})")
 
+
 def deleteBackups(backups, snapLocation, logFile):
-    #checkRoot("delete")
+    checkRoot("delete")
     for backup in backups:
         possibleBackupLocations = [snapLocation + f"/root/{backup}", snapLocation + f"/home-gray/{backup}"]
         for location in possibleBackupLocations:
@@ -99,11 +102,12 @@ def deleteBackups(backups, snapLocation, logFile):
         with open(logFile, 'r') as log:
             lines = log.readlines()
 
-        lines = [line for line in lines if not backup in line]
+        lines = [line for line in lines if backup not in line]
 
         with open(logFile, 'w') as log:
             for line in lines:
                 log.write(f"{line}")
+
 
 if __name__ == "__main__":
     args = setupArgs()
