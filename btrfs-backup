@@ -2,6 +2,16 @@
 import argparse
 import sys
 import os
+import subprocess
+import datetime
+import logging
+from systemd import journal
+
+class Error:
+    @staticmethod
+    def noRoot(command):
+            sys.stderr.write(f"\"{command}\" may only be used as root")
+            sys.exit(1)
 
 def setupArgs():
     
@@ -13,20 +23,64 @@ def setupArgs():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--snap-location", type = dir_path, default = "/snaps", help = "where snaps are located")
-    parser.add_argument("action", choices = ["log", "create", "delete"], help = "choose action")
-    parser.add_argument("-s", "--short", action = "store_true", help = "shorten the log")
+    subParser = parser.add_subparsers()
+    logParser = subParser.add_parser("log")
+    logParser.set_defaults(action = "log")
+    logParser.add_argument("-s", "--short", action = "store_true", help = "shorten the log")
+    createParser = subParser.add_parser("create")
+    createParser.set_defaults(action = "create")
+    createParser.add_argument("subvol", choices = ["root", "home-gray", "both"], help = "the subvolume to backup")
+    createParser.add_argument("reason", nargs='*', default = "")
     return parser.parse_args()
 
-def showLog(log_file, shorten):
-    if os.path.isfile(log_file):
-        with open(log_file, 'r') as log:
+def showLog(logFile, shorten):
+    if os.path.isfile(logFile):
+        with open(logFile, 'r') as log:
             if not shorten:
                 print(log.read())
             else:
                 print('\n'.join([item[1] for item in [item.split(' ') for item in log.read().split('\n')] if item[0] != '']))
 
+def checkRoot(command):
+    if os.geteuid() != 0:
+        Error.noRoot(command)
+
+def createBackup(subvolName, snapLocation, logFile, logReason = ""):
+    #checkRoot("create")
+    if subvolName == "both":
+        createBackup("root", snapLocation, logFile, logReason)
+        createBackup("home-gray", snapLocation, logFile, logReason)
+        return
+    
+    backupDir = snapLocation
+    if subvolName == "root":
+        subvol = "/"
+        backupDir += "/root/"
+    elif subvolName == "home-gray":
+        subvol = "/home/gray"
+        backupDir += "/home-gray/"
+
+    date = datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S")
+    backupDir += date
+    subprocess.call(["btrfs", "subvolume", "snapshot", "-r", subvol, backupDir])
+    with open(logFile, 'a') as log:
+        if logReason == "":
+            log.write(f"[{subvolName}] {date}\n")
+        else:
+            log.write(f"[{subvolName}] {date} - {logReason}\n")
+    log = logging.getLogger('btrfs-backup')
+    log.setLevel(logging.INFO)
+    log.addHandler(journal.JournalHandler())
+    if logReason == "":
+        log.info(f"Snapshot of {subvolName} volume successfully created")
+    else:
+        log.info(f"Snapshot of {subvolName} volume successfully created ({logReason})")
+
 if __name__ == "__main__":
     args = setupArgs()
+    logFile = args.snap_location + "/snaps.log"
 
     if args.action == "log":
-        showLog(args.snap_location + "/snaps.log", args.short)
+        showLog(logFile, args.short)
+    elif args.action == "create":
+        createBackup(args.subvol, args.snap_location, logFile, ' '.join(args.reason))
